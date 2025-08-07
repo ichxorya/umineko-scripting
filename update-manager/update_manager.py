@@ -1,4 +1,3 @@
-from re import Match
 import sys
 import os
 import json
@@ -9,9 +8,7 @@ import re
 import shutil
 import subprocess
 import time
-from functools import cmp_to_key
 from . import update_manager_utils as utils
-from typing import Optional
 
 """
 ⠀⠀⠀⠀⠀⢀⣤⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠛⠛⠛⠓⠒⠥⣄⠀⢈⣉⣷⣶⣦⣽⣶⣤⠔⠚⠋⠉⠉⠛⢿⡿⢴⣿⣲⢤⡀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -23,15 +20,14 @@ from typing import Optional
 ⠀⠀⠀⠀⠀⠀⠀⠰⣿⣿⣿⣿⡿⠁⠀⠀⠀⠀⠀⠀⠀⣰⡟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⡇⠀⠀⠀⠀⠈⢷⣄⠈⠻⣷⣦⡴⠟⠁⠘⣧⠀⠀⣾⣿⣦⣼⣿⠀⠀⣷⣧⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⢻⣻⠿⡿⠀⠀⠀⡀⠀⠀⠀⢀⣾⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⠀⠀⠀⠀⠀⠘⣿⣆⠀⠊⢻⣄⠀⠀⠀⢹⣆⣼⣳⣿⡿⣄⠙⢷⡀⡿⡟⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡇⠀⠀⣴⠃⠀⠀⢀⣾⡟⠀⠀⠀⢀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀⠀⠘⣿⠀⠀⠀⠹⣦⠀⠀⣠⡟⣵⡟⣹⣿⠸⡄⢸⣿⣿⠁⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⠀⠀⢠⠏⠀⠀⠀⣼⣿⠃⠀⠀⠀⡟⠀⠀⠀⢸⠇⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⢠⡄⢹⡇⠀⠀⠀⢹⣧⠾⣫⡾⠋⣴⡟⣿⠀⠀⢀⣿⢳⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⢹⠀⠀⢸⠀⠀⠀⢰⡟⣿⠀⠀⠀⣸⠃⠀⠀⠀⣾⠀⠀⠀⠀⠀⣿⡀⠀⠀⠀⠀⠀⣷⠈⣿⣤⡴⠖⣫⣵⡾⠏⢀⣴⣿⠃⣿⣇⣠⡞⠋⣿⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⠀⠀⢠⠏⠀⠀⠀⣼⣿⠃⠀⠀⠀⡟⠀⠀⠀⢸⠇⠀⠀⠀⠀⣿⠀⠀⠀⠀⠀⢠⡄⢹⡇⠀⠀⠀⢹⣧⠾⣫⡾⠋⣴⡟⣿⠀⠀⢀⣿⢳    ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⢹⠀⠀⢸⠀⠀⠀⢰⡟⣿⠀⠀⠀⣸⠃⠀⠀⠀⣾⠀⠀⠀⠀⠀⣿⡀⠀⠀⠀⠀⠀⣷⠈⣿⣤⡴⠖⣫⣵⡾⠏⢀⣴⣿⠃⣿⣇⣠⡞⠋⣿⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⡄⠀⣿⠀⠀⠀⢸⣇⣿⠀⠀⠀⣿⠀⠀⠀⠀⣧⠀⢸⠀⠀⠀⣿⣧⠀⠀⠀⠀⠀⣿⡀⣿⣷⣶⡿⠿⡫⠀⣠⣾⣿⢻⣆⣯⠹⣏⠀⣰⣿⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣇⣀⣿⡀⠀⠀⣸⣇⣿⠀⠀⠀⣿⡆⣄⠀⠀⣿⡄⢸⡄⠀⠀⢹⣟⣇⠀⠀⠀⠀⢹⡇⡟⢹⣦⠖⠋⣠⡾⣫⡿⡇⢸⣿⣿⠀⣿⣰⣿⠃⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣴⣿⣿⡏⠟⠛⠛⠻⠿⢦⣤⣼⡿⢷⣿⡤⣤⣿⣧⣘⣧⡀⣀⣬⣿⣿⠦⠤⣤⡤⠻⣧⡇⠀⢻⣴⠞⣫⣴⠟⠀⡇⣾⣿⠀⢠⣿⡽⠁⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢳⡃⣿⣧⣐⣢⣤⣤⣄⡀⠙⢾⡀⠀⠈⢧⣄⠛⠮⠿⠟⠛⠉⠉⠀⠀⠀⠀⠀⠙⠳⣟⠀⠀⢸⣧⣾⣿⡏⠀⢀⣷⣿⣇⣀⣼⣻⠃⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠹⣿⡀⣻⡇⠈⣽⣿⢦⡀⠛⡆⠀⠀⠈⠁⠀⠀⢀⣴⣾⣿⣿⣿⢿⡶⢶⣦⣈⠙⠆⠀⢸⡿⢻⣿⠃⠀⢸⣿⠏⠉⢹⣿⠃⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⣧⠀⠉⠉⠉⠉⠻⣿⡆⢷⠀⠀⠀⠀⠀⠠⢿⣋⣠⡿⠿⠿⣿⣇⣰⡿⠷⠆⠀⠀⢸⢁⣼⠿⠶⠶⣿⡏⣀⡴⡿⠃⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡇⠀⠀⠄⠀⠀⠀⣠⠟⠳⣄⠀⠀⠀⣠⠄⢀⡤⠀⠀⠀⠀⠙⠛⠂⠀⠀⠀⢠⡏⣼⡟⠀⠀⠀⢸⣟⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡇⠀⠀⠀⠀⠀⠀⣠⠟⠳⣄⠀⠀⠀⣠⠄⢀⡤⠀⠀⠀⠀⠙⠛⠂⠀⠀⠀⢠⡏⣼⡟⠀⠀⠀⢸⣟⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠀⠀⠀⠀⢾⠋⠁⠀⠀⠈⢣⡀⠜⠁⡰⠛⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⣾⡟⠀⠀⠀⠀⣸⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⣿⡄⠀⠀⠀⠈⣧⠀⠀⠀⢠⠔⠁⠀⠀⠀⠀⠀⠀⠀⠙⠢⢤⣄⠀⠀⠀⣾⣿⡟⠀⠀⠀⠀⣰⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣇⠀⠀⠀⠀⠘⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠴⢞⣹⠉⡇⠀⠀⣯⣿⡿⠀⢀⣠⣾⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -122,18 +118,6 @@ exclude: list[str] = [
 include: list[str] = []
 
 
-def err(message: str) -> None:
-    """Prints an error message and exits the program.
-
-    Parameters
-    ----------
-    - message : str
-        - The error message to print.
-    """
-    print(message)
-    sys.exit(0)
-
-
 def get_usage() -> str:
     """Returns the string that shows how to use the update manager.
 
@@ -152,41 +136,6 @@ def get_usage() -> str:
         "\tpython update_manager.py script script_file new_script last_episode\n"
         "\tpython update_manager.py update update_file source_folder new_folder [archive_prefix]\n"
     )
-
-
-def str_replace_first(
-    search_for_this_string: str, replace_with_this_string: str, original_string: str
-) -> str:
-    """Replaces the first occurrence of search string with replace string.
-
-    Parameters
-    ----------
-    - search_for_this_string : str
-        - The substring to search for.
-    - replace_with_this_string : str
-        - The substring to replace the first occurrence with.
-    - original_string : str
-        - The original string to modify.
-
-    Returns
-    -------
-    - str
-        - The modified string with the first occurrence replaced.
-
-    Notes
-    -----
-    - If the `search_for_this_string` is not found in `original_string`, the function will return the `original_string` unchanged.
-    """
-    # Split `original_string` into parts, using `search_for_this_string` as the delimiter.
-    # The split should only turn `original_string` into two parts.
-    parts: list[str] = original_string.split(search_for_this_string, 1)
-
-    # If the split resulted in two parts, join them with `replace_with_this_string`.
-    if len(parts) == 2:
-        return replace_with_this_string.join(parts)
-    # Else, if the split did not result in two parts, return the original string unchanged.
-    else:
-        return original_string
 
 
 def str_nat_sort(str1: str, str2: str) -> int:
@@ -246,132 +195,48 @@ def generate_guid() -> str:
 def inplace_lines(
     data_dir: str, in_dir: str, by_dir: str, replace_grim: bool = False
 ) -> str:
-    # Initialize a buffer to store the processed lines.
-    buffer = ""
+    """Processes script lines in place by replacing content based on mapping files.
 
-    # Initialize the `tmp_guid` variable as a temporary GUID.
+    Parameters
+    ----------
+    - data_dir : str
+        - Directory containing the main script files to modify.
+    - in_dir : str
+        - Directory containing the input/source mapping files.
+    - by_dir : str
+        - Directory containing the replacement mapping files.
+    - replace_grim : bool, optional
+        - Whether to apply grim-specific replacements, by default it is set to `False`.
+
+    Returns
+    -------
+    - str
+        - The combined processed content from all script files.
+    """
+    buffer: str = ""
     tmp_guid: str = generate_guid()
 
-    # Check if the provided directories exist.
-    # If not, print an error message and exit.
-    if (
-        not os.path.exists(data_dir)
-        or not os.path.exists(in_dir)
-        or not os.path.exists(by_dir)
-    ):
-        err("At least one of the directories does not exist.")
+    # Validate that the directories must exist.
+    utils.validate_script_directories(data_dir, in_dir, by_dir)
 
-    # Initialize the `scripts_in` list with all `.txt` files in the `in_dir`.
-    # Then, sort it.
-    scripts_in: list[str] = utils.get_txt_files_from_a_directory(in_dir)
-    scripts_in.sort()
+    # Get and validate script file mappings.
+    scripts: dict[str, str] = utils.get_and_validate_script_files(in_dir, by_dir)
 
-    # Initialize the `scripts_by` list with all `.txt` files in the `by_dir`.
-    # Then, sort it.
-    scripts_by: list[str] = utils.get_txt_files_from_a_directory(by_dir)
-    scripts_by.sort()
-
-    # Compare the lengths of `scripts_in` and `scripts_by`.
-    # If they are not equal, print an error message and exit.
-    if len(scripts_in) != len(scripts_by):
-        err(
-            "The number of input scripts does not match the number of scripts to replace."
-        )
-
-    # Initialize the `scripts` dictionary to map `scripts_in` values as the keys, to `scripts_by` values as the values.
-    scripts: dict[str, str] = {
-        in_file: by_file for in_file, by_file in zip(scripts_in, scripts_by)
-    }
-
-    # For each pair of key-value in the `scripts` dictionary, process as below.
+    # Process each script file.
     for in_file, by_file in scripts.items():
-        # Initialize the variables to store the paths to the "in", "by", and "data" files.
-        data_in_path: str = os.path.join(in_dir, in_file)
-        data_by_path: str = os.path.join(by_dir, by_file)
-        text_path: str = os.path.join(data_dir, in_file)
+        processed_text: str = utils.process_single_script_file(
+            in_file, by_file, data_dir, in_dir, by_dir, tmp_guid, replace_grim
+        )
+        buffer += processed_text + LF
 
-        # Try to open the "text" file in the `data_dir` and read its content.
-        try:
-            with open(text_path, "r", encoding="utf-8") as f:
-                text: str = f.read().strip()
-        except Exception:
-            err(f"Failed to read the file: {text_path}")
-        
-        # If `replace_grim` is True, call the `remove_grim` function to process the text.
-        if replace_grim:
-            text = utils.remove_grim(text)
-
-        # Try to open the "in" file and the "by" file, and read their content.
-        try:
-            with open(data_in_path, "r", encoding="utf-8") as f:
-                data_in_content: str = f.read().strip()
-        except Exception:
-            err(f"Failed to read the file: {data_in_path}")
-        try:
-            with open(data_by_path, "r", encoding="utf-8") as f:
-                data_by_content: str = f.read().strip()
-        except Exception:
-            err(f"Failed to read the file: {data_by_path}")
-
-        # If both `data_in_content` and `data_by_content` are not empty, process the lines.
-        if data_in_content and data_by_content and text:
-            # Initialize the `data_in_lines` and `data_by_lines` lists by splitting the content of the "in" and "by" files by line breaks.
-            data_in_lines: list[str] = data_in_content.split(LF)
-            data_by_lines: list[str] = data_by_content.split(LF)
-
-            # Iterate over the indices of `data_in_lines`.
-            for i in range(len(data_in_lines)):
-                # Check if the index `i` is out of bounds for either `data_in_lines` or `data_by_lines`.
-                if i >= len(data_in_lines) or not data_in_lines[i]:
-                    # If it is, print a warning message and continue to the next iteration.
-                    print(f'Missing data_in of {i} in {in_file} for {data_by_lines[i] if i < len(data_by_lines) else "?"}')
-                    continue
-                # Check if the index `i` is out of bounds for `data_by_lines`.
-                if i >= len(data_by_lines) or not data_by_lines[i]:
-                    # If it is, print a warning message and continue to the next iteration.
-                    print(f'Missing data_by of {i} in {by_file} for {data_in_lines[i] if i < len(data_in_lines) else "?"}')
-                    continue
-                
-                # Initialize the `data_in_line` and `data_by_line` variables as the stripped lines from `data_in_lines` and `data_by_lines` at index `i`.
-                # This removes any leading or trailing whitespace characters from the lines.
-                data_in_line: str = data_in_lines[i].strip()
-                data_by_line: str = data_by_lines[i].strip()
-
-                # If `replace_grim` is True...
-                if replace_grim:
-                    # Search for a match in `data_by_line` that follows the pattern `[gstg <number>]`.
-                    match: Match[str] | None = re.search(r'\[gstg \d+\]', data_by_line)
-                    # If a match is found, store it in `line_grim`, otherwise set `line_grim` to None.
-                    line_grim: str | None = match.group(0) if match else None
-                    # Remove the `[gstg <number>]` pattern from `data_by_line`.
-                    data_by_line = re.sub(r'\[gstg \d+\]', '', data_by_line)
-                
-                # Add `temp_guid` to the `data_by_line` string, then wrap it in backticks if it hadn't been wrapped already.
-                data_by_line = '`' + tmp_guid + data_by_line.lstrip('`')
-
-                if not data_by_line.endswith('`'):
-                    data_by_line += '`'
-                
-                # If `replace_grim` and `line_grim` are not empty, append `line_grim` to `data_by_line`.
-                if replace_grim and line_grim:
-                    data_by_line += line_grim
-
-                # Replace the first occurrence of `data_in_line` in `text` with `data_by_line`.
-                text = str_replace_first(data_in_line, data_by_line, text)
-    
-        # After processing all lines, remove the `tmp_guid` from `text`.
-        text = text.replace(tmp_guid, "")
-
-        # Append the processed text to the `buffer` with a line break.
-        buffer += text + LF
-    
-    # Return the final `buffer` containing all processed lines.
+    # Return the combined buffer content.
     return buffer
+
 
 def hash_dir(directory, base, hash_map, hash_type):
     """Recursively hash files in directory."""
     if not os.path.isdir(directory):
-        err(f"No such directory {directory}")
+        utils.err(f"No such directory {directory}")
 
     for item in os.listdir(directory):
         item_path = os.path.join(directory, item)
@@ -476,7 +341,7 @@ def generate_incomplete(ep):
 def filter_script(script, ep):
     """Filter script based on episode number."""
     if not ep.isdigit() or int(ep) < 1:
-        err("Invalid episode number")
+        utils.err("Invalid episode number")
 
     ep = int(ep)
     incomplete = generate_incomplete(ep + 1)
@@ -525,7 +390,7 @@ def localise_script(script, locale_dir):
             with open(os.path.join(locale_dir, file_name), "r", encoding="utf-8") as f:
                 dst = f.read().replace(CRLF, LF)
             script = script[:start] + dst + script[end + len(lend) :]
-        except:
+        except Exception:
             break
 
     return script
@@ -793,7 +658,7 @@ def xor_data(data, pass_num):
     ]
 
     if not data:
-        err("Nothing to xor")
+        utils.err("Nothing to xor")
 
     result = bytearray()
     for byte in data:
@@ -863,13 +728,13 @@ def main():
     argv = sys.argv
 
     if argc < 2:
-        err(get_usage())
+        utils.err(get_usage())
 
     command = argv[1]
 
     if command in ["hash", "adler", "size"]:
         if argc < 4:
-            err(get_usage())
+            utils.err(get_usage())
 
         hashes = {}
         hash_dir(argv[2], argv[2], hashes, command)
@@ -884,12 +749,12 @@ def main():
 
     elif command == "verify":
         if argc < 4:
-            err(get_usage())
+            utils.err(get_usage())
 
         if not os.path.exists(argv[2]):
-            err(f"No such file {argv[2]}")
+            utils.err(f"No such file {argv[2]}")
         if not os.path.exists(argv[3]):
-            err(f"No such file {argv[3]}")
+            utils.err(f"No such file {argv[3]}")
 
         with open(argv[2], "r", encoding="utf-8") as f:
             old_hashes = json.load(f)
@@ -929,7 +794,7 @@ def main():
 
     elif command == "dscript":
         if argc < 5:
-            err(get_usage())
+            utils.err(get_usage())
 
         ver = "8.3b" + (f" r{argv[5]}" if argc > 5 else "")
         locale = argv[4]
@@ -990,10 +855,10 @@ def main():
 
     elif command == "script":
         if argc < 5:
-            err(get_usage())
+            utils.err(get_usage())
 
         if not os.path.exists(argv[2]):
-            err(f"No such file {argv[2]}")
+            utils.err(f"No such file {argv[2]}")
 
         with open(argv[2], "r", encoding="utf-8") as f:
             script = f.read()
@@ -1006,13 +871,13 @@ def main():
 
     elif command == "update":
         if argc < 5:
-            err(get_usage())
+            utils.err(get_usage())
 
         with open(argv[2], "r", encoding="utf-8") as f:
             update = json.load(f)
 
         if not os.path.isdir(argv[3]):
-            err(f"No source dir {argv[3]}")
+            utils.err(f"No source dir {argv[3]}")
 
         if not os.path.isdir(argv[4]):
             os.makedirs(argv[4], 0o755, exist_ok=True)
@@ -1054,7 +919,7 @@ def main():
             shutil.rmtree(argv[4])
 
     else:
-        err(get_usage())
+        utils.err(get_usage())
 
 
 if __name__ == "__main__":
