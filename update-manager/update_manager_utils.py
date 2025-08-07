@@ -65,6 +65,20 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 """
 
 
+def err(message: str) -> None:
+    """Prints an error message and exits the program.
+
+    TODO: Replace this with proper use of exceptions, use logging, or something similar.
+
+    Parameters
+    ----------
+    - message : str
+        - The error message to print.
+    """
+    print(message)
+    sys.exit(0)
+
+
 def natural_key(input: str) -> list[int | str]:
     """Splits the input string into natural keys.
 
@@ -93,6 +107,43 @@ def natural_key(input: str) -> list[int | str]:
             key.append(part.lower())
     # Return the list of natural keys.
     return key
+
+
+def str_nat_sort(str1: str, str2: str) -> int:
+    """Returns a number indicating the order of two strings in natural sort order.
+
+    Parameters
+    ----------
+    - str1 : str
+        - The first string to compare.
+    - str2 : str
+        - The second string to compare.
+
+    Returns
+    -------
+    - int
+        - A negative number if `str1 < str2`, a positive number if `str1 > str2`, and 0 if they are equal.
+    """
+    # The function first checks if the first four characters of both strings are equal.
+    substr1: str = str1[:4]
+    substr2: str = str2[:4]
+    if substr1 == substr2:
+        # If there is "op" in `substr1`, it is considered that `str1 < str2`.
+        if "op" in substr1:
+            return -1
+        # Else, if there is "op" in `substr2`, it is considered that `str1 > str2`.
+        elif "op" in substr2:
+            return 1
+        # Else, if both strings are equal, it is considered that `str1 == str2`.
+        elif str1 == str2:
+            return 0
+
+    # Initialize the natural keys for both strings.
+    key1: list[int | str] = natural_key(str1)
+    key2: list[int | str] = natural_key(str2)
+
+    # Compare the natural keys (performs a natural sort comparison).
+    return (key1 > key2) - (key1 < key2)
 
 
 def extract_guid(data: bytes) -> str:
@@ -140,7 +191,8 @@ def get_txt_files_from_a_directory(directory: str) -> list[str]:
 
 
 def remove_grim(text: str) -> str:
-    """Remove some specific stuffs from the text. IDK what `grim` means, but it is in the original PHP code.
+    """Remove some specific stuffs ("grim" pattern) from the text.
+    IDK what `grim` means, but it is in the original PHP code.
 
     Parameters
     ----------
@@ -206,30 +258,35 @@ def validate_directories_exist(*directories: str) -> bool:
 def process_grim_line(
     data_by_line: str, replace_grim: bool
 ) -> tuple[str, Optional[str]]:
-    """Processes a line for grim patterns if `replace_grim` is `True`.
+    """Processes a line for "grim" patterns if `replace_grim` is `True`.
 
     Parameters
     ----------
     - data_by_line : str
         - The line to process.
     - replace_grim : bool
-        - Whether to process grim patterns.
+        - Whether to process "grim" patterns.
 
     Returns
     -------
     - tuple[str, Optional[str]]
-        - A tuple containing the processed line and the extracted grim pattern (if any).
+        - A tuple containing the processed line and the extracted "grim" pattern (if any).
     """
+    # Initialize `line_grim` to None, which will hold the "grim" pattern if found.
     line_grim: Optional[str] = None
 
+    # If `replace_grim` is True...
     if replace_grim:
         # Search for a match in `data_by_line` that follows the pattern `[gstg <number>]`.
         match: Match[str] | None = re.search(r"\[gstg \d+\]", data_by_line)
+
         # If a match is found, store it in `line_grim`, otherwise set `line_grim` to None.
         line_grim = match.group(0) if match else None
+
         # Remove the `[gstg <number>]` pattern from `data_by_line`.
         data_by_line = re.sub(r"\[gstg \d+\]", "", data_by_line)
 
+    # Return the processed line and the "grim" pattern (if any).
     return data_by_line, line_grim
 
 
@@ -259,6 +316,7 @@ def str_replace_first(
     # If the split resulted in two parts, join them with `replace_with_this_string`.
     if len(parts) == 2:
         return replace_with_this_string.join(parts)
+    # Else, if the split did not result in two parts, return the original string.
     else:
         return original_string
 
@@ -266,7 +324,7 @@ def str_replace_first(
 def wrap_line_with_guid(
     data_by_line: str, tmp_guid: str, line_grim: Optional[str], replace_grim: bool
 ) -> str:
-    """Wraps a line with temporary GUID and backticks, and optionally appends grim pattern.
+    """Wraps a line with temporary GUID and backticks, and optionally appends "grim" pattern.
 
     Parameters
     ----------
@@ -275,9 +333,9 @@ def wrap_line_with_guid(
     - tmp_guid : str
         - The temporary GUID to insert.
     - line_grim : Optional[str]
-        - The grim pattern to append (if any).
+        - The "grim" pattern to append (if any).
     - replace_grim : bool
-        - Whether grim replacement is enabled.
+        - Whether "grim" replacement is enabled.
 
     Returns
     -------
@@ -285,7 +343,7 @@ def wrap_line_with_guid(
         - The wrapped line.
     """
     # Add `temp_guid` to the `data_by_line` string, then wrap it in backticks if it hadn't been wrapped already.
-    wrapped_line = "`" + tmp_guid + data_by_line.lstrip("`")
+    wrapped_line: str = "`" + tmp_guid + data_by_line.lstrip("`")
 
     if not wrapped_line.endswith("`"):
         wrapped_line += "`"
@@ -297,47 +355,36 @@ def wrap_line_with_guid(
     return wrapped_line
 
 
-def err(message: str) -> None:
-    """Prints an error message and exits the program.
-
-    Parameters
-    ----------
-    - message : str
-        - The error message to print.
-    """
-    print(message)
-    sys.exit(0)
-
-
 def validate_script_directories(data_dir: str, in_dir: str, by_dir: str) -> None:
     """Validates that all required directories exist for script processing.
 
     Parameters
     ----------
     - data_dir : str
-        - The data directory path.
+        - TODO: Figure out what this is for.
     - in_dir : str
-        - The input directory path.
+        - TODO: Figure out what this is for.
     - by_dir : str
-        - The by/replacement directory path.
+        - TODO: Figure out what this is for.
     """
     if not validate_directories_exist(data_dir, in_dir, by_dir):
         err("At least one of the directories does not exist.")
 
 
 def get_and_validate_script_files(in_dir: str, by_dir: str) -> dict[str, str]:
-    """Gets and validates script files from input and replacement directories.
+    """Gets and validates script files from `in_dir` and `by_dir`.
+    TODO: Figure out what `in_dir` and `by_dir` are for.
 
     Parameters
     ----------
     - in_dir : str
-        - The input directory path.
+        - TODO: Figure out what this is for.
     - by_dir : str
-        - The replacement directory path.
+        - TODO: Figure out what this is for.
 
     Returns
     -------
-    - dict[str, str]
+    - scripts : dict[str, str]
         - A mapping of input files to replacement files.
     """
     # Get and sort script files from both directories.
@@ -353,8 +400,13 @@ def get_and_validate_script_files(in_dir: str, by_dir: str) -> dict[str, str]:
             "The number of input scripts does not match the number of scripts to replace."
         )
 
-    # Create mapping of input files to replacement files.
-    return {in_file: by_file for in_file, by_file in zip(scripts_in, scripts_by)}
+    # Create the required mapping.
+    scripts: dict[str, str] = {
+        in_file: by_file for in_file, by_file in zip(scripts_in, scripts_by)
+    }
+
+    # Return the mapping.
+    return scripts
 
 
 def process_single_script_file(
@@ -371,19 +423,19 @@ def process_single_script_file(
     Parameters
     ----------
     - in_file : str
-        - The input filename.
+        - TODO: Figure out what this is for.
     - by_file : str
-        - The replacement filename.
+        - TODO: Figure out what this is for.
     - data_dir : str
-        - The data directory path.
+        - TODO: Figure out what this is for.
     - in_dir : str
-        - The input directory path.
+        - TODO: Figure out what this is for.
     - by_dir : str
-        - The replacement directory path.
+        - TODO: Figure out what this is for.
     - tmp_guid : str
         - Temporary GUID for line processing.
     - replace_grim : bool
-        - Whether to apply grim replacements.
+        - Whether to apply "grim" replacements.
 
     Returns
     -------
@@ -416,7 +468,7 @@ def process_single_script_file(
             replace_grim,
         )
 
-    # Remove temporary GUID and return
+    # Remove temporary GUID and return.
     return text.replace(tmp_guid, "")
 
 
@@ -434,32 +486,32 @@ def process_script_lines(
     Parameters
     ----------
     - text : str
-        - The main text to modify.
+        - TODO: Figure out what this is for.
     - data_in_content : str
-        - Content from the input file.
+        - TODO: Figure out what this is for.
     - data_by_content : str
-        - Content from the replacement file.
+        - TODO: Figure out what this is for.
     - in_file : str
-        - Input filename (for error reporting).
+        - TODO: Figure out what this is for.
     - by_file : str
-        - Replacement filename (for error reporting).
+        - TODO: Figure out what this is for.
     - tmp_guid : str
         - Temporary GUID for line processing.
     - replace_grim : bool
-        - Whether to apply grim replacements.
+        - Whether to apply "grim" replacements.
 
     Returns
     -------
     - str
         - The processed text with line replacements applied.
     """
-    # Split content into lines
+    # Split content into lines.
     data_in_lines: list[str] = data_in_content.split(LF)
     data_by_lines: list[str] = data_by_content.split(LF)
 
-    # Process each line pair
+    # Process each line pair.
     for i in range(len(data_in_lines)):
-        # Validate line indices and content
+        # Validate line indices and content.
         if i >= len(data_in_lines) or not data_in_lines[i]:
             print(
                 f"Missing data_in of {i} in {in_file} for {data_by_lines[i] if i < len(data_by_lines) else '?'}"
@@ -470,19 +522,20 @@ def process_script_lines(
             print(f"Missing data_by of {i} in {by_file} for {data_in_lines[i]}")
             continue
 
-        # Get cleaned lines
+        # Get cleaned lines.
         data_in_line: str = data_in_lines[i].strip()
         data_by_line: str = data_by_lines[i].strip()
 
-        # Process grim patterns if needed
+        # Process "grim" patterns if needed.
         data_by_line, line_grim = process_grim_line(data_by_line, replace_grim)
 
-        # Wrap line with GUID and backticks
+        # Wrap line with GUID and backticks.
         data_by_line = wrap_line_with_guid(
             data_by_line, tmp_guid, line_grim, replace_grim
         )
 
-        # Replace first occurrence in text
+        # Replace first occurrence in text.
         text = str_replace_first(data_in_line, data_by_line, text)
 
+    # Return the processed text.
     return text

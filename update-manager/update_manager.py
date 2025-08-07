@@ -137,44 +137,6 @@ def get_usage() -> str:
         "\tpython update_manager.py update update_file source_folder new_folder [archive_prefix]\n"
     )
 
-
-def str_nat_sort(str1: str, str2: str) -> int:
-    """Returns a number indicating the order of two strings in natural sort order.
-
-    Parameters
-    ----------
-    - str1 : str
-        - The first string to compare.
-    - str2 : str
-        - The second string to compare.
-
-    Returns
-    -------
-    - int
-        - A negative number if `str1 < str2`, a positive number if `str1 > str2`, and 0 if they are equal.
-    """
-    # The function first checks if the first four characters of both strings are equal.
-    substr1: str = str1[:4]
-    substr2: str = str2[:4]
-    if substr1 == substr2:
-        # If there is "op" in `substr1`, it is considered that `str1 < str2`.
-        if "op" in substr1:
-            return -1
-        # Else, if there is "op" in `substr2`, it is considered that `str1 > str2`.
-        elif "op" in substr2:
-            return 1
-        # Else, if both strings are equal, it is considered that `str1 == str2`.
-        elif str1 == str2:
-            return 0
-
-    # Initialize the natural keys for both strings.
-    key1: list[int | str] = utils.natural_key(str1)
-    key2: list[int | str] = utils.natural_key(str2)
-
-    # Compare the natural keys (performs a natural sort comparison).
-    return (key1 > key2) - (key1 < key2)
-
-
 def generate_guid() -> str:
     """Generates a GUID (Globally Unique Identifier) as a hexadecimal string.
 
@@ -200,13 +162,13 @@ def inplace_lines(
     Parameters
     ----------
     - data_dir : str
-        - Directory containing the main script files to modify.
+        - TODO: Figure out what this is for.
     - in_dir : str
-        - Directory containing the input/source mapping files.
+        - TODO: Figure out what this is for.
     - by_dir : str
-        - Directory containing the replacement mapping files.
+        - TODO: Figure out what this is for.
     - replace_grim : bool, optional
-        - Whether to apply grim-specific replacements, by default it is set to `False`.
+        - Whether to apply some specific replacements, by default it is set to `False`.
 
     Returns
     -------
@@ -222,8 +184,13 @@ def inplace_lines(
     # Get and validate script file mappings.
     scripts: dict[str, str] = utils.get_and_validate_script_files(in_dir, by_dir)
 
+    # Sort the keys by natural sort order.
+    sorted_scripts: dict[str, str] = dict(
+        sorted(scripts.items(), key=(lambda item: utils.str_nat_sort(item[0], item[1])))
+    )
+
     # Process each script file.
-    for in_file, by_file in scripts.items():
+    for in_file, by_file in sorted_scripts.items():
         processed_text: str = utils.process_single_script_file(
             in_file, by_file, data_dir, in_dir, by_dir, tmp_guid, replace_grim
         )
