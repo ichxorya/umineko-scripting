@@ -239,20 +239,25 @@ def read_file_content(file_path: str) -> str:
         raise Exception(f"Error reading file {file_path}: {e}") from e
 
 
-def validate_directories_exist(*directories: str) -> bool:
+def validate_directories_exist(directories: list[str]) -> bool:
     """Validates that all provided directories exist.
 
     Parameters
     ----------
-    - *directories : str
-        - Variable number of directory paths to validate.
+    - directories : list[str]
+        - A list of directory paths to validate.
 
     Returns
     -------
     - bool
         - True if all directories exist, False otherwise.
     """
-    return all(os.path.exists(directory) for directory in directories)
+    # Check if all directories in the list exist.
+    for directory in directories:
+        if not os.path.exists(directory):
+            return False
+    # If all directories exist, return True.
+    return True
 
 
 def process_grim_line(
@@ -367,7 +372,7 @@ def validate_script_directories(data_dir: str, in_dir: str, by_dir: str) -> None
     - by_dir : str
         - TODO: Figure out what this is for.
     """
-    if not validate_directories_exist(data_dir, in_dir, by_dir):
+    if not validate_directories_exist([data_dir, in_dir, by_dir]):
         err("At least one of the directories does not exist.")
 
 
@@ -539,3 +544,62 @@ def process_script_lines(
 
     # Return the processed text.
     return text
+
+
+def has_in(haystack: str, needle: list[str]) -> bool:
+    """Checks if the `haystack` string contains any of the `needle` strings.
+
+    This function determines whether the haystack string contains any of the strings
+    specified in the needle parameter. The needle can be either a single string or
+    a list of strings to check against.
+
+    Parameters
+    ----------
+    - haystack : str
+        - The string to search within.
+    - needle : list[str]
+        - The strings to search for in the `haystack`.
+
+    Returns
+    -------
+    - bool
+        - True if haystack contains any of the needle strings, False otherwise.
+    """
+
+    # Check if any of the needle strings is present in the haystack
+    for query in needle:
+        if query in haystack:
+            # Return immediately if a match is found
+            return True
+
+    # Return False if no matches are found
+    return False
+
+
+def get_key_table() -> bytes:
+    """Returns the key table used for encryption/decryption.
+
+    Returns
+    -------
+    - bytes
+        - A bytes object containing the key table.
+        - The table is a sequence of 256 bytes.
+    """
+    return (
+        b"\xc0\xbc\x86\x66\x84\xf3\xbe\x90\xb0\x02\x98\x5e\x0f\x9c\x7b\xf4"
+        b"\xd9\x91\xdb\xeb\x81\x74\x3a\xe3\x76\x94\x21\x93\x63\x68\x0d\xa1"
+        b"\xba\xaa\x1b\xa0\x49\x2b\xe1\xe7\x38\xa6\x25\x53\x40\x4a\xec\x29"
+        b"\x36\xbf\xf2\x9f\xac\x0c\xcb\x00\x1f\xf1\x7c\x80\x4f\x60\x82\x62"
+        b"\x14\x6d\xd8\x32\x13\x2f\xe0\x99\xf7\x10\xd1\x30\x64\x4e\x8c\xde"
+        b"\xc1\x6a\xad\xa7\xb5\x95\xcf\xc6\x0b\x2d\x69\x24\x5c\xc5\x03\xda"
+        b"\xd6\x8e\xa3\x88\x31\x17\x3c\xb3\xa8\xb4\x01\x0e\xfc\x37\x65\x16"
+        b"\x6c\xbb\x50\x55\x2a\xe5\x77\x97\x09\xb1\x04\x67\xc7\x79\x71\x7a"
+        b"\x43\xd0\x22\x58\x0a\x57\xb7\xae\x4d\xc8\xe9\x46\xd3\x5b\x96\xcc"
+        b"\x3f\xe6\x3e\x54\x5f\x1d\xfa\xf0\x3d\x7d\x83\xa5\xfd\xef\x15\x8b"
+        b"\x70\x6b\xe2\xff\x07\xd7\x92\x41\x61\x75\x6f\x7f\xc4\xd5\xf9\x05"
+        b"\x34\xfe\x5d\xdc\xb9\xe8\xab\xca\xc3\x35\x08\x3b\xa2\xbd\x8f\x7e"
+        b"\x2e\x44\x5a\x12\xed\xe4\x11\x1e\xc2\x78\xf5\xaf\xf6\x72\x28\x9d"
+        b"\x6e\x39\xd2\xea\x45\x73\x47\x9e\x26\x89\x85\x52\x33\xdf\xa4\x48"
+        b"\x23\xce\x1c\x8d\x18\x27\x9a\xb6\xa9\xee\xb8\xc9\x2c\xfb\x59\x56"
+        b"\x20\x42\xcd\x51\xb2\x06\x19\x4b\x9b\xd4\x8a\x4c\xf8\x87\x1a\xdd"
+    )

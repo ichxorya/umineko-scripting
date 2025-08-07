@@ -1,3 +1,4 @@
+from _hashlib import HASH
 import sys
 import os
 import json
@@ -137,6 +138,7 @@ def get_usage() -> str:
         "\tpython update_manager.py update update_file source_folder new_folder [archive_prefix]\n"
     )
 
+
 def generate_guid() -> str:
     """Generates a GUID (Globally Unique Identifier) as a hexadecimal string.
 
@@ -200,545 +202,684 @@ def inplace_lines(
     return buffer
 
 
-def hash_dir(directory, base, hash_map, hash_type):
-    """Recursively hash files in directory."""
-    if not os.path.isdir(directory):
-        utils.err(f"No such directory {directory}")
+def hash_dir(
+    directory: str, base: str, hash_map: dict[str, str], hash_type: str
+) -> None:
+    """Recursively hashes files in a directory using the specified hashing algorithm.
 
+    This function walks through all files in the given directory and its subdirectories,
+    computing hashes using the specified algorithm. The computed hashes are stored in
+    the provided `hash_map` dictionary with the relative file paths as keys.
+
+    Parameters
+    ----------
+    - directory : str
+        - The directory path to start the recursive hashing from.
+    - base : str
+        - The base directory path used to compute relative paths for the hash map keys.
+    - hash_map : dict[str, str]
+        - The dictionary to store the computed hashes with relative file paths as keys.
+        - Note: Dictionary type as this parameter is pass-by-reference, so it will be modified in place.
+    - hash_type : str
+        - The type of hash to compute. Can be "adler", "size", or "md5".
+
+    Raises
+    ------
+    - ValueError
+        - If an unsupported hash type is provided.
+
+    Notes
+    -----
+    - For "adler" hash type, uses zlib.adler32 and formats as 8-character hexadecimal.
+    - For "size" hash type, uses the file size in bytes as the hash value.
+    - For "md5" hash type, uses MD5 hashing with 4KB chunk reading.
+    """
+    # Check if the provided directory exists.
+    if not os.path.isdir(directory):
+        utils.err(f"No such directory {directory}.")
+
+    # Iterate through all items in the current directory.
     for item in os.listdir(directory):
-        item_path = os.path.join(directory, item)
+        # Construct the full path for the current item.
+        item_path: str = os.path.join(directory, item)
+
+        # If the item is a directory, recursively hash its contents.
         if os.path.isdir(item_path):
             hash_dir(item_path, base, hash_map, hash_type)
         else:
-            relative_path = os.path.relpath(item_path, base).replace("\\", "/")
+            # For files, compute the relative path from the base directory.
+            relative_path: str = os.path.relpath(item_path, base).replace("\\", "/")
 
+            # Compute hash based on the specified hash type.
+            # If the Adler-32 checksum algorithm is used...
             if hash_type == "adler":
                 with open(item_path, "rb") as f:
-                    content = f.read()
-                hash_value = format(zlib.adler32(content) & 0xFFFFFFFF, "08x")
+                    # Read entire file content.
+                    content: bytes = f.read()
+                # Compute Adler-32.
+                hash_value: str = format(zlib.adler32(content) & 0xFFFFFFFF, "x")
+            # Else, if the file size is used as the hash value...
             elif hash_type == "size":
-                hash_value = os.path.getsize(item_path)
-            else:  # md5
-                hash_value = hashlib.md5()
+                # Use file size as the hash value.
+                hash_value: str = str(os.path.getsize(item_path))
+            # Else, if the MD5 hash algorithm is used...
+            elif hash_type == "md5":
+                # Initialize MD5 hash object.
+                hash_value_md5: HASH = hashlib.md5()
+                # Read file in 4KB chunks for memory efficiency.
                 with open(item_path, "rb") as f:
                     for chunk in iter(lambda: f.read(4096), b""):
-                        hash_value.update(chunk)
-                hash_value = hash_value.hexdigest()
+                        # Update hash with chunk data.
+                        hash_value_md5.update(chunk)
+                # Get the hexadecimal digest of the computed hash.
+                hash_value: str = hash_value_md5.hexdigest()
+            else:
+                # Raise an error if an unsupported hash type is provided.
+                raise ValueError(f"Unsupported hash type: {hash_type}")
 
+            # Store the computed hash in the hash map with normalized path as key.
             hash_map["/" + relative_path] = hash_value
 
 
-def has_in(haystack, needle):
-    """Check if haystack contains any of the needle strings."""
-    if not isinstance(needle, list):
-        needle = [needle]
+def filtered_ini_create(hashes: dict[str, str], mode: str) -> str:
+    """Creates a filtered INI output string containing hash information.
 
-    for query in needle:
-        if query in haystack:
-            return True
-    return False
+    This function generates an INI-formatted string containing hash information for files,
+    excluding certain files based on the global exclude list. The output follows a specific
+    format used by the Umineko PS3fication project.
 
+    Parameters
+    ----------
+    - hashes : dict[str, str]
+        - A dictionary mapping file paths to their hash values.
+    - mode : str
+        - The hash mode/algorithm used (e.g., "adler", "size", "md5").
 
-def filtered_ini_create(hashes, mode):
-    """Create filtered INI output."""
-    output = "[info]" + CRLF
+    Returns
+    -------
+    - str
+        - A formatted INI string containing the hash information with proper headers and data sections.
+
+    Notes
+    -----
+    - The output includes an [info] section with metadata about the game and hash type.
+    - The [data] section contains the actual file path and hash value pairs.
+    - Files matching patterns in the global exclude list are filtered out.
+    - Files containing "game.hash" in their path are also excluded.
+    """
+    # Annotate that `exclude` is a global variable to be used in this function.
+    global exclude
+
+    # Initialize a clone of the hashes dictionary to avoid modifying the original.
+    hashes_copy: dict[str, str] = hashes.copy()
+
+    # Start building the INI output with the info section header.
+    output: str = "[info]" + CRLF
+    # Add game identifier information.
     output += '"game"="UminekoPS3fication*"' + CRLF
+    # Add the hash mode/algorithm used.
     output += f'"hash"="{mode}"' + CRLF
+    # Add version information.
     output += '"ver"="20190109-ru"' + CRLF
+    # Add API version information.
     output += '"apiver"="2.2.0"' + CRLF
+    # Add date field (set to ignore).
     output += '"date"="ignore"' + CRLF
+    # Start the data section containing hash information
     output += "[data]" + CRLF
 
-    for file_path, hash_value in hashes.items():
-        if not has_in(file_path, exclude) and "game.hash" not in file_path:
+    # Process each file path and hash value pair
+    for file_path, hash_value in hashes_copy.items():
+        # Filter out files that match exclude patterns or contain "game.hash"
+        if not utils.has_in(file_path, exclude) and "game.hash" not in file_path:
+            # Remove leading forward slash from file path if present.
             if file_path.startswith("/"):
                 file_path = file_path[1:]
+            # Add the file path and hash value as a quoted key-value pair.
             output += f'"{file_path}"="{hash_value}"' + CRLF
 
+    # Return the complete INI output string.
     return output
 
 
-def compare_hashes(old_hashes, new_hashes):
-    """Compare two hash dictionaries and return differences."""
-    out = {"different": {}, "delete": [], "insert": {}}
+def compare_hashes(
+    old_hashes: dict[str, str], new_hashes: dict[str, str]
+) -> dict[str, dict[str, str]]:
+    """Compares two hash dictionaries and returns the differences between them.
 
-    for old_file, old_hash in old_hashes.items():
-        # Avoid any temporary files
-        if has_in(old_file, exclude) and old_file in new_hashes:
-            del new_hashes[old_file]
+    This function analyzes two hash dictionaries (typically representing file states
+    at different points in time) and categorizes the differences into three types:
+    modified files, deleted files, and newly inserted files.
 
-        force_include: bool = has_in(old_file, include)
+    TODO: Understand the purpose of this function and how it works. I don't dare to comment on it yet.
+    THIS IS A BLIND TRANSLATION FROM THE PHP CODE.
+    """
+    # Annotate that `exclude` and `include` are global variables to be used in this function.
+    global exclude
+    global include
 
-        if old_file in new_hashes or force_include:
-            # Has change
-            if new_hashes.get(old_file) != old_hash or force_include:
-                clean_file = re.sub(r"^[/\\]", "", old_file)
-                out["different"][clean_file] = new_hashes.get(old_file, old_hash)
-            if old_file in new_hashes:
-                del new_hashes[old_file]
+    # Initialize the output dictionary with three categories: different, deleted, and inserted.
+    out: dict[str, dict[str, str]] = {"different": {}, "deleted": {}, "inserted": {}}
+
+    old_hashes_clone: dict[str, str] = old_hashes.copy()
+    new_hashes_clone: dict[str, str] = new_hashes.copy()
+
+    for old_file_path, old_hash in old_hashes_clone.items():
+        if utils.has_in(old_file_path, exclude) and new_hashes_clone.get(old_file_path):
+            old_hashes_clone.pop(old_file_path)
+
+        forced_include: bool = utils.has_in(old_file_path, include)
+
+        if new_hashes_clone.get(old_file_path) or forced_include:
+            if new_hashes_clone.get(old_file_path) != old_hash or forced_include:
+                file_path_cleaned: str = old_file_path.lstrip("/")
+                out["different"][file_path_cleaned] = new_hashes_clone[old_file_path]
+                new_hashes_clone.pop(old_file_path)
         else:
-            # Redundant file
-            clean_file = re.sub(r"^[/\\]", "", old_file)
-            out["delete"].append(clean_file)
+            file_path_cleaned: str = old_file_path.lstrip("/")
+            out["deleted"]["deleted"] = file_path_cleaned
+        old_hashes_clone.pop(old_file_path)
 
-    # Process remaining new files
-    for new_file, new_hash in list(new_hashes.items()):
-        if not has_in(new_file, exclude):
-            clean_file = re.sub(r"^[/\\]", "", new_file)
-            out["insert"][clean_file] = new_hash
+    out["inserted"] = new_hashes_clone
 
     return out
 
 
-def generate_incomplete(ep):
-    """Generate incomplete episode script."""
-    num = {1: 17, 2: 18, 3: 18, 4: 19, 5: 15, 6: 18, 7: 18, 8: 16}
+def generate_incomplete(ep) -> str:
+    """Generates script content for incomplete episodes in the Umineko visual novel.
 
+    This function creates script directives that redirect incomplete episodes to an
+    "incomplete" label, effectively skipping them. It's used to create partial builds
+    that only include episodes up to a certain point.
+
+    Parameters
+    ----------
+    - ep : int
+        - The episode number from which to start generating incomplete directives.
+        - Episodes from this number onwards will be marked as incomplete.
+
+    Returns
+    -------
+    - str
+        - A string containing script directives that redirect incomplete episodes
+          to the "*incomplete" label using "jskip_s goto" commands.
+
+    Notes
+    -----
+    - The function uses a predefined dictionary mapping episode numbers to their chapter counts.
+    - Each episode includes opening, numbered chapters, ending, teatime, and ura (reverse) teatime sections.
+    - All incomplete sections use the "jskip_s goto *incomplete ~" directive followed by CRLF.
+    - The generated script covers episodes 1-8 with their respective chapter counts.
+    """
+    # Define the number of chapters for each episode (1-8)
+    num: dict[int, int] = {1: 17, 2: 18, 3: 18, 4: 19, 5: 15, 6: 18, 7: 18, 8: 16}
+
+    # Initialize output string
     out = ""
 
+    # Generate incomplete directives for episodes starting from 'ep' to episode 8
     for i in range(ep, 9):
+        # Add incomplete directive for episode opening
         out += f"*umi{i}_op{CRLF}jskip_s goto *incomplete ~{CRLF}"
+
+        # Add incomplete directives for each chapter in the episode
         for j in range(1, num[i] + 1):
             out += f"*umi{i}_{j}{CRLF}jskip_s goto *incomplete ~{CRLF}"
+
+        # Add incomplete directives for episode ending and teatime sections
         out += f"*umi{i}_end{CRLF}*teatime_{i}{CRLF}jskip_s goto *incomplete ~{CRLF}*teatime_{i}_end{CRLF}*ura_teatime_{i}{CRLF}jskip_s goto *incomplete ~{CRLF}*ura_{i}_end{CRLF}"
 
     return out
 
 
-def filter_script(script, ep):
-    """Filter script based on episode number."""
+def filter_script(script: str, ep: str) -> str:
+    """Filters a script to include only episodes up to a specified episode number.
+
+    This function modifies a script to truncate content after a specified episode,
+    replacing later episodes with incomplete directives and updating file extensions
+    from .txt to .file.
+
+    Parameters
+    ----------
+    - script : str
+        - The input script content to be filtered.
+    - ep : str
+        - The episode number (as string) up to which content should be preserved.
+        - Must be a valid positive integer.
+
+    Returns
+    -------
+    - str
+        - The filtered script with later episodes replaced by incomplete directives
+          and file extensions updated.
+
+    Raises
+    ------
+    - SystemExit
+        - If the episode number is invalid (not a digit or less than 1).
+
+    Notes
+    -----
+    - The function looks for the opening pattern of the episode after the specified one.
+    - It searches for ending patterns to determine where to insert incomplete content.
+    - File extensions are changed from ".txt" to ".file" in the final output.
+    - Supports both LF and CRLF line endings in the ending patterns.
+    """
+    # Validate episode number input
     if not ep.isdigit() or int(ep) < 1:
         utils.err("Invalid episode number")
 
-    ep = int(ep)
-    incomplete = generate_incomplete(ep + 1)
+    # Convert episode string to integer
+    ep_as_int: int = int(ep)
+    # Generate incomplete episode content for episodes after the specified one
+    incomplete: str = generate_incomplete(ep_as_int + 1)
 
-    start_pattern = f"*umi{ep + 1}_op"
-    start = script.find(start_pattern)
+    # Create the pattern to find the start of the next episode
+    start_pattern: str = f"*umi{ep_as_int + 1}_op"
+    # Find the position where the next episode begins
+    start: int = script.find(start_pattern)
 
+    # If the start pattern is found, replace content from that point
     if start != -1:
-        end_pattern1 = "ura_8_end\ngoto *end_game"
-        end_pattern2 = "ura_8_end\r\ngoto *end_game"
+        # Define ending patterns to look for (supporting both LF and CRLF)
+        end_pattern1: str = "ura_8_end\ngoto *end_game"  # LF line ending
+        end_pattern2: str = "ura_8_end\r\ngoto *end_game"  # CRLF line ending
 
-        end = script.find(end_pattern1, start)
+        # Search for the ending pattern starting from the found position
+        end: int = script.find(end_pattern1, start)
         if end == -1:
+            # If LF pattern not found, try CRLF pattern
             end = script.find(end_pattern2, start)
-            end_len = len(end_pattern2)
+            end_len: int = len(end_pattern2)
         else:
-            end_len = len(end_pattern1)
+            end_len: int = len(end_pattern1)
 
+        # If an ending pattern is found, replace the content between start and end
         if end != -1:
-            script = script[:start] + incomplete + script[end + end_len :]
+            script: str = script[:start] + incomplete + script[end + end_len :]
 
-    script = script.replace(".txt", ".file")
+    # Replace file extensions from .txt to .file throughout the script
+    script: str = script.replace(".txt", ".file")
     return script
 
 
-def localise_script(script, locale_dir):
-    """Localise script by importing locale files."""
-    lstart = '#locale_import "'
-    lend = '"'
+def localise_script(script: str, locale_dir: str) -> str:
+    """Localizes a script by importing locale-specific files.
 
+    This function processes a script to replace #locale_import directives with the
+    actual content of locale files. It searches for import statements and replaces
+    them with the corresponding file contents from the specified locale directory.
+
+    Parameters
+    ----------
+    - script : str
+        - The input script content containing #locale_import directives.
+    - locale_dir : str
+        - The directory path containing locale files to be imported.
+
+    Returns
+    -------
+    - str
+        - The localized script with import directives replaced by actual file contents.
+
+    Notes
+    -----
+    - Import directives must follow the format: #locale_import "filename.txt"
+    - Filename validation ensures only alphanumeric, underscore, and .txt files are allowed.
+    - File contents are normalized to use LF line endings (CRLF converted to LF).
+    - If a file cannot be read or doesn't exist, processing stops at that directive.
+    - The function continues processing until all valid import directives are resolved.
+
+    Security
+    --------
+    - Only .txt files with specific character patterns are allowed for import.
+    """
+    # Define the start and end markers for locale import directives
+    lstart: str = '#locale_import "'  # Start of import directive
+    lend: str = '"'  # End of import directive (closing quote)
+
+    # Process import directives in a loop until none remain
     while True:
-        start = script.find(lstart)
+        # Find the next locale import directive
+        start: int = script.find(lstart)
         if start == -1:
-            break
+            break  # No more import directives found
 
-        end = script.find(lend, start + len(lstart))
+        # Find the closing quote for the import directive
+        end: int = script.find(lend, start + len(lstart))
         if end == -1:
-            break
+            break  # Malformed directive, stop processing
 
-        file_name = script[start + len(lstart) : end]
+        # Extract the filename from between the quotes
+        file_name: str = script[start + len(lstart) : end]
 
+        # Validate filename to prevent security issues and ensure valid format
+        # Only allow alphanumeric characters, underscores, and .txt extension
         if not re.match(r"^[a-z0-9_]+\.txt$", file_name, re.IGNORECASE):
-            break
+            break  # Invalid filename format, stop processing
 
         try:
+            # Attempt to read the locale file
             with open(os.path.join(locale_dir, file_name), "r", encoding="utf-8") as f:
-                dst = f.read().replace(CRLF, LF)
+                dst: str = f.read().replace(CRLF, LF)  # Normalize line endings to LF
+            # Replace the import directive with the file content
             script = script[:start] + dst + script[end + len(lend) :]
         except Exception:
+            # If file reading fails (file not found, permission error, etc.), stop processing
             break
 
     return script
 
 
-def xor_data(data, pass_num):
-    """XOR data with key table."""
-    key_table = [
-        0xC0,
-        0xBC,
-        0x86,
-        0x66,
-        0x84,
-        0xF3,
-        0xBE,
-        0x90,
-        0xB0,
-        0x02,
-        0x98,
-        0x5E,
-        0x0F,
-        0x9C,
-        0x7B,
-        0xF4,
-        0xD9,
-        0x91,
-        0xDB,
-        0xEB,
-        0x81,
-        0x74,
-        0x3A,
-        0xE3,
-        0x76,
-        0x94,
-        0x21,
-        0x93,
-        0x63,
-        0x68,
-        0x0D,
-        0xA1,
-        0xBA,
-        0xAA,
-        0x1B,
-        0xA0,
-        0x49,
-        0x2B,
-        0xE1,
-        0xE7,
-        0x38,
-        0xA6,
-        0x25,
-        0x53,
-        0x40,
-        0x4A,
-        0xEC,
-        0x29,
-        0x36,
-        0xBF,
-        0xF2,
-        0x9F,
-        0xAC,
-        0x0C,
-        0xCB,
-        0x00,
-        0x1F,
-        0xF1,
-        0x7C,
-        0x80,
-        0x4F,
-        0x60,
-        0x82,
-        0x62,
-        0x14,
-        0x6D,
-        0xD8,
-        0x32,
-        0x13,
-        0x2F,
-        0xE0,
-        0x99,
-        0xF7,
-        0x10,
-        0xD1,
-        0x30,
-        0x64,
-        0x4E,
-        0x8C,
-        0xDE,
-        0xC1,
-        0x6A,
-        0xAD,
-        0xA7,
-        0xB5,
-        0x95,
-        0xCF,
-        0xC6,
-        0x0B,
-        0x2D,
-        0x69,
-        0x24,
-        0x5C,
-        0xC5,
-        0x03,
-        0xDA,
-        0xD6,
-        0x8E,
-        0xA3,
-        0x88,
-        0x31,
-        0x17,
-        0x3C,
-        0xB3,
-        0xA8,
-        0xB4,
-        0x01,
-        0x0E,
-        0xFC,
-        0x37,
-        0x65,
-        0x16,
-        0x6C,
-        0xBB,
-        0x50,
-        0x55,
-        0x2A,
-        0xE5,
-        0x77,
-        0x97,
-        0x09,
-        0xB1,
-        0x04,
-        0x67,
-        0xC7,
-        0x79,
-        0x71,
-        0x7A,
-        0x43,
-        0xD0,
-        0x22,
-        0x58,
-        0x0A,
-        0x57,
-        0xB7,
-        0xAE,
-        0x4D,
-        0xC8,
-        0xE9,
-        0x46,
-        0xD3,
-        0x5B,
-        0x96,
-        0xCC,
-        0x3F,
-        0xE6,
-        0x3E,
-        0x54,
-        0x5F,
-        0x1D,
-        0xFA,
-        0xF0,
-        0x3D,
-        0x7D,
-        0x83,
-        0xA5,
-        0xFD,
-        0xEF,
-        0x15,
-        0x8B,
-        0x70,
-        0x6B,
-        0xE2,
-        0xFF,
-        0x07,
-        0xD7,
-        0x92,
-        0x41,
-        0x61,
-        0x75,
-        0x6F,
-        0x7F,
-        0xC4,
-        0xD5,
-        0xF9,
-        0x05,
-        0x34,
-        0xFE,
-        0x5D,
-        0xDC,
-        0xB9,
-        0xE8,
-        0xAB,
-        0xCA,
-        0xC3,
-        0x35,
-        0x08,
-        0x3B,
-        0xA2,
-        0xBD,
-        0x8F,
-        0x7E,
-        0x2E,
-        0x44,
-        0x5A,
-        0x12,
-        0xED,
-        0xE4,
-        0x11,
-        0x1E,
-        0xC2,
-        0x78,
-        0xF5,
-        0xAF,
-        0xF6,
-        0x72,
-        0x28,
-        0x9D,
-        0x6E,
-        0x39,
-        0xD2,
-        0xEA,
-        0x45,
-        0x73,
-        0x47,
-        0x9E,
-        0x26,
-        0x89,
-        0x85,
-        0x52,
-        0x33,
-        0xDF,
-        0xA4,
-        0x48,
-        0x23,
-        0xCE,
-        0x1C,
-        0x8D,
-        0x18,
-        0x27,
-        0x9A,
-        0xB6,
-        0xA9,
-        0xEE,
-        0xB8,
-        0xC9,
-        0x2C,
-        0xFB,
-        0x59,
-        0x56,
-        0x20,
-        0x42,
-        0xCD,
-        0x51,
-        0xB2,
-        0x06,
-        0x19,
-        0x4B,
-        0x9B,
-        0xD4,
-        0x8A,
-        0x4C,
-        0xF8,
-        0x87,
-        0x1A,
-        0xDD,
-    ]
+def xor_data(data: bytes, pass_num: int) -> bytes:
+    """Performs XOR encryption/decryption on data using a predefined key table.
 
+    This function applies XOR encryption to the input data using a 256-byte key table
+    and different XOR patterns based on the pass number. This is used as part of the
+    script transformation process in the Umineko visual novel engine.
+
+    Parameters
+    ----------
+    - data : bytes
+        - The binary data to be XOR processed.
+    - pass_num : int
+        - The pass number determining which XOR pattern to use:
+          - pass_num != 2: Uses pattern (key_table[byte ^ 0x71] ^ 0x45)
+          - pass_num == 2: Uses pattern (key_table[byte ^ 0x23] ^ 0x86)
+
+    Returns
+    -------
+    - bytes
+        - The XOR-processed data as a bytes object.
+
+    Raises
+    ------
+    - SystemExit
+        - If the input data is empty (via utils.err).
+
+    Notes
+    -----
+    - The key table is a predefined 256-byte lookup table for XOR operations.
+    - This function is typically used in a two-pass encryption process.
+    - The XOR patterns and key table are specific to the ONScripter engine format.
+    """
+    # Predefined 256-byte key table for XOR operations
+    key_table_as_bytes: bytes = utils.get_key_table()
+    key_table: list[int] = list(key_table_as_bytes)
+
+    # Validate input data
     if not data:
         utils.err("Nothing to xor")
 
-    result = bytearray()
-    for byte in data:
-        c = byte
+    # Create a mutable byte array for the result
+    result: bytearray = bytearray()
 
+    # Process each byte in the input data
+    for byte in data:
+        c: int = byte  # Current byte value
+
+        # Apply XOR transformation based on pass number
         if pass_num != 2:
+            # First pass: XOR with 0x71, lookup in key table, then XOR with 0x45
             c = key_table[c ^ 0x71] ^ 0x45
         else:
+            # Second pass: XOR with 0x23, lookup in key table, then XOR with 0x86
             c = key_table[c ^ 0x23] ^ 0x86
 
+        # Add the transformed byte to the result
         result.append(c)
 
+    # Convert result back to bytes and return
     return bytes(result)
 
 
-def transform_script(data):
-    """Transform script data."""
+def transform_script(data) -> bytes:
+    """Transforms script data through a two-pass XOR encryption and compression process.
+
+    This function applies a specific transformation algorithm used by the ONScripter
+    engine for script files. The process involves XOR encryption, zlib compression,
+    and a second XOR pass, all applied in chunks for memory efficiency.
+
+    Parameters
+    ----------
+    - data : str or bytes
+        - The input script data to be transformed. If a string is provided,
+          it will be encoded to UTF-8 bytes.
+
+    Returns
+    -------
+    - bytes
+        - The transformed data as a bytes object, ready for storage or transmission.
+
+    Notes
+    -----
+    - The transformation process consists of three main steps:
+      1. First XOR pass (pass_num=1) applied in 128KB chunks
+      2. Zlib compression with maximum compression level (9)
+      3. Second XOR pass (pass_num=2) applied in 128KB chunks
+    - Chunk processing (128KB = 131072 bytes) ensures memory efficiency for large files.
+    - This is part of the ONScripter engine's script encoding format.
+    """
+    # Convert string input to bytes if necessary
     if isinstance(data, str):
         data = data.encode("utf-8")
 
-    # First pass
-    result = b""
-    chunk_size = 131072
+    # First pass: Apply XOR encryption in chunks
+    result = b""  # Initialize empty bytes result
+    chunk_size = 131072  # 128KB chunks for memory efficiency
+
+    # Process data in chunks for the first XOR pass
     for i in range(0, len(data), chunk_size):
-        chunk = data[i : i + chunk_size]
-        result += xor_data(chunk, 1)
+        chunk = data[i : i + chunk_size]  # Extract current chunk
+        result += xor_data(chunk, 1)  # Apply first XOR pass and append
 
-    # Compress
-    compressed = zlib.compress(result, 9)
+    # Compress the XOR-encrypted data using maximum compression
+    compressed = zlib.compress(result, 9)  # Level 9 = maximum compression
 
-    # Second pass
-    result = b""
+    # Second pass: Apply XOR encryption to compressed data in chunks
+    result = b""  # Reset result for second pass
+
+    # Process compressed data in chunks for the second XOR pass
     for i in range(0, len(compressed), chunk_size):
-        chunk = compressed[i : i + chunk_size]
-        result += xor_data(chunk, 2)
+        chunk = compressed[i : i + chunk_size]  # Extract current chunk
+        result += xor_data(chunk, 2)  # Apply second XOR pass and append
 
     return result
 
 
-def encode_script(data):
-    """Encode script with header."""
+def encode_script(data: str | bytes) -> bytes:
+    """Encodes script data with a proper header for the ONScripter engine format.
+
+    This function creates a complete encoded script file by adding the appropriate
+    header to transformed script data. The header contains metadata about the
+    transformed data including magic signature, sizes, and version information.
+
+    Parameters
+    ----------
+    - data : str or bytes
+        - The input script data to be encoded. If a string is provided,
+          it will be encoded to UTF-8 bytes before processing.
+
+    Returns
+    -------
+    - bytes
+        - The complete encoded script file with header and transformed data,
+          ready to be written to disk.
+
+    Notes
+    -----
+    - The header format follows the ONScripter engine specification:
+      - Magic signature: "ONS2" (4 bytes ASCII)
+      - Transformed data size: 4 bytes little-endian unsigned integer
+      - Original data size: 4 bytes little-endian unsigned integer
+      - Version number: 4 bytes little-endian unsigned integer (110)
+    - The total header size is 16 bytes followed by the transformed data.
+    - This creates files compatible with the ONScripter visual novel engine.
+    """
+    # Convert string input to bytes if necessary
     if isinstance(data, str):
-        data = data.encode("utf-8")
+        data_as_bytes: bytes = data.encode("utf-8")
 
-    out_size = len(data)
-    transformed_data = transform_script(data)
+    # Store the original size before transformation
+    out_size: int = len(data_as_bytes)
 
-    # Create header
-    header = MAGIC.encode("ascii")
+    # Apply the script transformation (XOR + compression + XOR)
+    transformed_data: bytes = transform_script(data_as_bytes)
+
+    # Create the header according to ONScripter format specification
+    header: bytes = MAGIC.encode("ascii")  # Magic signature "ONS2" as ASCII bytes
+
+    # Pack header values as little-endian unsigned integers:
+    # - Length of transformed data
+    # - Original data size
+    # - Version number (from global VERSION constant = 110)
     header += struct.pack("<LLL", len(transformed_data), out_size, VERSION)
 
+    # Combine header and transformed data into final encoded script
     return header + transformed_data
 
 
-def remove_grim(text):
-    """Remove grim formatting from text."""
-    # Remove color formatting
+def remove_grim(text: str) -> str:
+    """Removes grim formatting tags from text content.
+
+    This function strips specific formatting tags that are used in the "grim" format,
+    which appears to be a markup system used in some versions of the Umineko scripts.
+    It removes color formatting and stage tags while preserving the actual text content.
+
+    Parameters
+    ----------
+    - text : str
+        - The input text containing grim formatting tags to be removed.
+
+    Returns
+    -------
+    - str
+        - The cleaned text with grim formatting tags removed, preserving only the content.
+
+    Notes
+    -----
+    - Removes color formatting tags in the format: {c:86EF9C:content} -> content
+    - Removes stage tags in the format: [gstg NUMBER] -> (empty string)
+    - The color code 86EF9C appears to be a specific hex color used in the grim format.
+    - This function is used when converting between different script formatting systems.
+
+    Examples
+    --------
+    >>> remove_grim("{c:86EF9C:Hello} World [gstg 1]")
+    "Hello World "
+    """
+    # Remove color formatting tags, preserving the content inside
+    # Pattern: {c:86EF9C:content} -> content
     text = re.sub(r"\{c:86EF9C:(.*?)\}", r"\1", text)
-    # Remove gstg tags
+
+    # Remove gstg (stage) tags completely
+    # Pattern: [gstg NUMBER] -> (empty string)
     text = re.sub(r"\[gstg \d+\]", "", text)
+
     return text
 
 
-def main():
-    """Main function."""
+def main() -> None:
+    """Main entry point for the Umineko Project Script Update Manager.
+
+    This function processes command-line arguments and executes the appropriate
+    operations for managing Umineko visual novel scripts. It supports multiple
+    modes of operation including hashing, verification, script generation,
+    and update package creation.
+
+    Command-line Operations
+    ----------------------
+    - hash/adler/size: Generate hash files for directories
+    - verify: Compare hash files and generate update information
+    - dscript: Generate complete localized scripts from source files
+    - script: Filter and encode scripts for specific episodes
+    - update: Create update packages and optionally compress them
+
+    Notes
+    -----
+    - All operations require specific command-line arguments as defined in get_usage()
+    - File operations use UTF-8 encoding for text files and binary mode for script files
+    - Error handling is performed via utils.err() which exits the program
+    - The function processes sys.argv directly for command-line argument parsing
+
+    Raises
+    ------
+    - SystemExit
+        - If insufficient arguments are provided or invalid operations are specified
+        - If required files or directories don't exist
+        - If any file operations fail during processing
+    """
+    # Get command-line argument count and values
     argc = len(sys.argv)
     argv = sys.argv
 
+    # Ensure at least one command argument is provided
     if argc < 2:
         utils.err(get_usage())
 
+    # Extract the main command from arguments
     command = argv[1]
 
+    # Hash generation commands: hash, adler, size
     if command in ["hash", "adler", "size"]:
+        # Require: command, directory, output_file
         if argc < 4:
             utils.err(get_usage())
 
+        # Initialize empty hash dictionary
         hashes = {}
+        # Recursively hash files in the specified directory
         hash_dir(argv[2], argv[2], hashes, command)
 
+        # Generate output based on hash type
         if command == "hash":
+            # Generate JSON output for MD5 hashes
             output = json.dumps(hashes, indent=2)
         else:
+            # Generate INI format for adler/size hashes
             output = filtered_ini_create(hashes, command)
 
+        # Write output to specified file with UTF-8 encoding
         with open(argv[3], "w", encoding="utf-8") as f:
             f.write(output)
 
+    # Hash verification and comparison command
     elif command == "verify":
+        # Require: command, old_hash_file, new_hash_file
         if argc < 4:
             utils.err(get_usage())
 
+        # Validate that both hash files exist
         if not os.path.exists(argv[2]):
             utils.err(f"No such file {argv[2]}")
         if not os.path.exists(argv[3]):
             utils.err(f"No such file {argv[3]}")
 
+        # Load hash dictionaries from JSON files
         with open(argv[2], "r", encoding="utf-8") as f:
             old_hashes = json.load(f)
         with open(argv[3], "r", encoding="utf-8") as f:
             new_hashes = json.load(f)
 
-        modifications = compare_hashes(old_hashes, new_hashes)
+        # Compare the hash dictionaries to find differences
+        modifications: dict[str, dict[str, str]] = compare_hashes(
+            old_hashes, new_hashes
+        )
 
+        # Build INI-format fixture string for the modifications
         fixture = ""
         for sect, content in modifications.items():
             fixture += CRLF + f"[{sect}]" + CRLF
+            # Handle different content types (dict vs list)
             for key, value in content.items():
-                if isinstance(key, int) or key.isdigit():
+                if key.isdigit():
+                    # Numeric keys indicate deletion operations
                     fixture += f'"{value}"="DO"' + CRLF
                 else:
+                    # String keys indicate file modifications or insertions
                     fixture += f'"{key}"="{value}"' + CRLF
 
+        # Add MD5 hash of the fixture content for integrity verification
         fixture += (
             CRLF
             + "[update]"
@@ -748,7 +889,9 @@ def main():
             + CRLF
         )
 
+        # Output to file if specified, otherwise print to console
         if argc > 5:
+            # Determine output format (JSON or INI) based on optional argument
             output = (
                 json.dumps(modifications)
                 if len(argv) > 5 and argv[5] == "json"
@@ -759,49 +902,58 @@ def main():
         else:
             print(fixture)
 
+    # Script generation command for localized builds
     elif command == "dscript":
+        # Require: command, output_file, scripting_folder, locale
         if argc < 5:
             utils.err(get_usage())
 
+        # Set version string with optional revision number
         ver = "8.3b" + (f" r{argv[5]}" if argc > 5 else "")
-        locale = argv[4]
+        locale = argv[4]  # Target locale (e.g., "en", "cn", "cht")
+        # Generate game ID based on locale
         gameid = f"UminekoPS3fication{locale.capitalize()}"
-        scripting = argv[3]
+        scripting = argv[3]  # Base scripting directory
 
-        # Read header
+        # Read and process header template
         with open(
             os.path.join(scripting, "script", "umi_hdr.txt"), "r", encoding="utf-8"
         ) as f:
             script = f.read() + LF
 
+        # Normalize line endings and perform template substitutions
         script = script.replace(CRLF, LF)
         script = script.replace("builder_id", gameid)
         script = script.replace("builder_date", str(int(time.time())))
         script = script.replace("builder_localisation", locale)
         script = script.replace("builder_version", ver)
 
-        # Process episodes 1-8
+        # Process episodes 1-8 by merging Japanese and localized content
         for i in range(1, 9):
+            # Determine translation directory, fallback to English if locale not found
             tldir = os.path.join(scripting, "story", f"ep{i}", locale)
             if not os.path.isdir(tldir):
                 tldir = os.path.join(scripting, "story", f"ep{i}", "en")
 
+            # Process episode content with localization
             script += inplace_lines(
                 os.path.join(scripting, "game", "main"),
                 os.path.join(scripting, "story", f"ep{i}", "jp"),
                 tldir,
-                locale in REPLACE_GRIM_WITH_LOCALIZE,
+                locale
+                in REPLACE_GRIM_WITH_LOCALIZE,  # Apply grim replacement for specific locales
             )
 
-        # Process omake
+        # Process omake (bonus content) section
         script += inplace_lines(
             os.path.join(scripting, "game", "omake"),
             os.path.join(scripting, "story", "omake", "jp"),
             os.path.join(scripting, "story", "omake", locale),
         )
 
-        # Read footer
+        # Read and append footer content with locale-specific handling
         footer_path = os.path.join(scripting, "script", "umi_ftr.txt")
+        # Use locale-specific footer for certain languages
         if locale == "cn":
             footer_path = os.path.join(scripting, "script", "cn", "umi_ftr.txt")
         elif locale == "cht":
@@ -809,85 +961,121 @@ def main():
         elif locale == "tr":
             footer_path = os.path.join(scripting, "script", "tr", "umi_ftr.txt")
 
+        # Read footer content and normalize line endings
         with open(footer_path, "r", encoding="utf-8") as f:
             footer = f.read()
 
         script += footer.replace(CRLF, LF)
 
-        # Localise script
+        # Apply locale-specific imports and substitutions
         script = localise_script(script, os.path.join(scripting, "script", locale))
 
+        # Write final script to output file
         with open(argv[2], "w", encoding="utf-8") as f:
             f.write(script)
 
+    # Script filtering and encoding command
     elif command == "script":
+        # Require: command, input_script, output_file, episode_number
         if argc < 5:
             utils.err(get_usage())
 
+        # Validate input file exists
         if not os.path.exists(argv[2]):
             utils.err(f"No such file {argv[2]}")
 
+        # Read the input script file
         with open(argv[2], "r", encoding="utf-8") as f:
             script = f.read()
 
+        # Filter script to include only episodes up to specified number
         script = filter_script(script, argv[4])
-        encoded = encode_script(script)
+        # Encode script with proper header for ONScripter engine
+        encoded: bytes = encode_script(script)
 
+        # Write encoded script as binary file
         with open(argv[3], "wb") as f:
             f.write(encoded)
 
+    # Update package creation command
     elif command == "update":
+        # Require: command, update_file, source_folder, destination_folder
         if argc < 5:
             utils.err(get_usage())
 
+        # Load update specification from JSON file
         with open(argv[2], "r", encoding="utf-8") as f:
             update = json.load(f)
 
+        # Validate source directory exists
         if not os.path.isdir(argv[3]):
             utils.err(f"No source dir {argv[3]}")
 
+        # Create destination directory if it doesn't exist
         if not os.path.isdir(argv[4]):
             os.makedirs(argv[4], 0o755, exist_ok=True)
 
+        # Copy files specified in update package
         for sect, content in update.items():
+            # Only process insert and different sections (ignore delete)
             if sect not in ["insert", "different"]:
                 continue
 
+            # Copy each file in the section
             for file_path, file_hash in content.items():
+                # Create destination directory structure if needed
                 dir_path = os.path.join(argv[4], os.path.dirname(file_path))
                 if not os.path.isdir(dir_path):
                     os.makedirs(dir_path, 0o755, exist_ok=True)
+                # Copy file with metadata preservation
                 shutil.copy2(
                     os.path.join(argv[3], file_path), os.path.join(argv[4], file_path)
                 )
 
+        # Create compressed archive if archive prefix is specified
         if argc > 5:
             import datetime
 
+            # Generate archive filename with current date
             archive = f"{argv[5]}_{datetime.datetime.now().strftime('%d.%m.%y')}.7z"
             folder = os.path.join(argv[4], "*")
 
+            # Build 7z command with password protection and high compression
             cmd = [
-                "7z",
-                "a",
-                archive,
-                "-t7z",
-                "-m0=lzma2",
-                "-mx=9",
-                "-mfb=64",
-                "-md=128m",
-                "-ms=on",
-                "-mhe",
-                "-v1023m",
-                f"-p{PASSWORD}",
-                folder,
+                "7z",  # 7-Zip executable
+                "a",  # Add to archive command
+                archive,  # Output archive name
+                "-t7z",  # Archive type: 7z
+                "-m0=lzma2",  # Compression method: LZMA2
+                "-mx=9",  # Compression level: Ultra (maximum)
+                "-mfb=64",  # Number of fast bytes for LZMA2
+                "-md=128m",  # Dictionary size: 128MB
+                "-ms=on",  # Solid compression enabled
+                "-mhe",  # Encrypt archive headers
+                "-v1023m",  # Split into 1023MB volumes
+                f"-p{PASSWORD}",  # Password protection
+                folder,  # Source files pattern
             ]
+            # Execute 7z command
             subprocess.run(cmd)
+            # Clean up temporary update directory after archiving
             shutil.rmtree(argv[4])
 
+    # Invalid command handling
     else:
         utils.err(get_usage())
 
 
 if __name__ == "__main__":
-    main()
+    """Entry point when script is run directly.
+    
+    This conditional ensures that the main() function is only called when this script
+    is executed directly (not when imported as a module). This is a Python best practice
+    for creating executable scripts that can also be imported as modules.
+    
+    When executed directly, this will:
+    - Parse command-line arguments via sys.argv
+    - Execute the appropriate update manager operation
+    - Handle any errors through utils.err() which will exit the program
+    """
+    main()  # Execute the main function to process command-line arguments
